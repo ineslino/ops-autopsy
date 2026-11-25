@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en" data-type="software" data-radius="soft" data-buttons="solid">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="page-type" content="software" />
+    <meta name="site-kind" content="software" />
+    <meta name="description" content="Trace failed delivery runs to their causes, inspect evidence, and check recovery steps before retrying." />
+    <meta name="theme-color" content="#111512" />
+    <meta property="og:title" content="Ops Autopsy: incident analysis for delivery teams" />
+    <meta property="og:description" content="Trace failed delivery runs to their causes and inspect evidence before retrying." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="share.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>Ops Autopsy: incident analysis for delivery teams</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Incident navigation">
+        <a class="skip-link" href="#overview">Skip to incident analysis</a>
+        <a class="brand" href="#overview" aria-label="Ops Autopsy home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none">
+              <path d="M5 8.5h8l3 5h11M5 23.5h8l3-5h11" />
+              <circle cx="5" cy="8.5" r="2" />
+              <circle cx="5" cy="23.5" r="2" />
+              <circle cx="27" cy="13.5" r="2" />
+              <circle cx="27" cy="18.5" r="2" />
+            </svg>
+          </span>
+          <span class="brand-copy">
+            <strong>Ops Autopsy</strong>
+            <small>Incident analysis</small>
+          </span>
+        </a>
+
+        <div class="workspace-badge">
+          <span class="workspace-dot" aria-hidden="true"></span>
+          Demo workspace
+        </div>
+
+        <div class="incident-list-heading">
+          <div>
+            <span class="sidebar-kicker">Run history</span>
+            <h2>Recent incidents</h2>
+          </div>
+          <span class="sidebar-count" id="incident-count"></span>
+        </div>
+        <div class="incident-list" id="incident-list"></div>
+
+        <div class="sidebar-bottom">
+          <div class="read-only-note">
+            <span class="read-only-icon" aria-hidden="true">✓</span>
+            <span class="profile-copy">
+              <strong>Read-only analysis</strong>
+              <small>Recommendations never apply changes</small>
+            </span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main-content" id="overview">
+        <header class="topbar">
+          <div class="breadcrumbs">
+            <span>Incident analysis</span>
+            <span class="breadcrumb-divider" aria-hidden="true">/</span>
+            <span class="breadcrumb-current" id="breadcrumb-current">Deploy API service</span>
+          </div>
+          <div class="topbar-actions">
+            <span class="environment-pill"><span aria-hidden="true"></span> Demo data</span>
+            <button class="help-button" type="button" aria-label="About Ops Autopsy">i</button>
+          </div>
+        </header>
+
+        <section class="incident-header" id="incidents">
+          <div class="title-row">
+            <div class="title-copy">
+              <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> Run analysis</div>
+              <h1 id="incident-title"></h1>
+              <p class="incident-subtitle" id="incident-subtitle"></p>
+            </div>
+            <div class="header-actions">
+              <button class="button button-primary" id="compare-button" type="button" aria-pressed="false">
+                <span aria-hidden="true">⇄</span> Compare runs
+              </button>
+              <button class="button button-secondary" id="share-button" type="button">
+                <span aria-hidden="true">↗</span> Copy link
+              </button>
+            </div>
+          </div>
+          <div class="metadata-row" id="metadata-row"></div>
+        </section>
+
+        <section class="run-banner" id="run-banner" aria-live="polite"></section>
+
+        <section class="analysis-layout" aria-label="Incident causal analysis">
+          <div class="analysis-main">
+            <div class="section-heading">
+              <div>
+                <h2>Causal timeline</h2>
+                <p>Select an event to inspect its evidence.</p>
+              </div>
+              <div class="trace-controls">
+                <span class="trace-range">Full run</span>
+              </div>
+            </div>
+
+            <div class="trace-panel">
+              <div class="trace-legend" aria-label="Event types">
+                <span><i class="legend-dot cause" aria-hidden="true"></i> Root cause</span>
+                <span><i class="legend-dot failed" aria-hidden="true"></i> Failed step</span>
+                <span><i class="legend-dot affected" aria-hidden="true"></i> Downstream impact</span>
+              </div>
+              <div class="trace-scroll">
+                <div class="trace" id="trace" aria-label="Causal sequence"></div>
+              </div>
+              <div class="trace-footer">
+                <span id="trace-summary"></span>
+                <button class="text-button" id="reset-selection" type="button">Reset to first event <span aria-hidden="true">↺</span></button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="evidence-panel" aria-live="polite">
+            <div class="evidence-heading">
+              <div>
+                <span class="section-kicker">Selected event</span>
+                <h2>Evidence details</h2>
+              </div>
+              <span class="evidence-index" id="evidence-index"></span>
+            </div>
+            <div id="evidence-content"></div>
+          </aside>
+        </section>
+
+        <section class="recovery-section" id="recovery">
+          <div class="recovery-title">
+            <div>
+              <span class="section-kicker">Next steps</span>
+              <h2>Before you rerun</h2>
+            </div>
+            <span class="read-only-badge"><span aria-hidden="true"></span> Advisory only</span>
+          </div>
+          <div class="recovery-card" id="recovery-card"></div>
+        </section>
+
+        <footer class="app-footer">
+          <span><span class="footer-mark" aria-hidden="true">◈</span> Ops Autopsy</span>
+          <span>All incident data is fictional</span>
+        </footer>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
