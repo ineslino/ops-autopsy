@@ -1,0 +1,10 @@
+.git/**
+.gitignore
+.github/**
+.taste-skill/**
+.vscode/**
+tiles/**
+node_modules/**
+tests/**
+package-lock.json
+*.vsix

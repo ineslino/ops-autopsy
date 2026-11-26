@@ -1,2 +1,4 @@
 .taste-skill/
 tiles/
+node_modules/
+*.vsix

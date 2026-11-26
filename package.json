@@ -1,0 +1,94 @@
+{
+  "name": "ops-autopsy",
+  "displayName": "Ops Autopsy",
+  "description": "Inspect fictional delivery incidents with a visual causal timeline and read-only recovery guidance.",
+  "version": "0.1.0",
+  "publisher": "ineslino",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ineslino/ops-autopsy.git"
+  },
+  "homepage": "https://github.com/ineslino/ops-autopsy#readme",
+  "bugs": {
+    "url": "https://github.com/ineslino/ops-autopsy/issues"
+  },
+  "keywords": [
+    "incident-analysis",
+    "devops",
+    "read-only"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "extensionKind": [
+    "ui"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onCommand:opsAutopsy.openAnalyzer"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "opsAutopsy.openAnalyzer",
+        "title": "Ops Autopsy: Open Incident Analyzer"
+      }
+    ],
+    "configuration": {
+      "title": "Ops Autopsy",
+      "properties": {
+        "opsAutopsy.preferences": {
+          "type": "object",
+          "scope": "application",
+          "default": {
+            "providerId": "demo",
+            "workspaceName": "Demo workspace",
+            "environmentName": "Development"
+          },
+          "properties": {
+            "providerId": {
+              "type": "string",
+              "enum": [
+                "demo"
+              ],
+              "default": "demo",
+              "description": "Incident source. Only fictional demo data is currently available."
+            },
+            "workspaceName": {
+              "type": "string",
+              "default": "Demo workspace",
+              "maxLength": 64,
+              "description": "Non-secret workspace label shown by Ops Autopsy."
+            },
+            "environmentName": {
+              "type": "string",
+              "default": "Development",
+              "maxLength": 48,
+              "description": "Non-secret environment label shown by Ops Autopsy."
+            }
+          },
+          "additionalProperties": false,
+          "description": "User-level, non-secret preferences for the incident analyzer."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "node --check extension.js && node --check app.js && node --check integration-settings.js",
+    "test": "node --test",
+    "vscode:prepublish": "npm run check && npm test",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.1.1"
+  },
+  "overrides": {
+    "@vscode/vsce": {
+      "minimatch": "11.0.9"
+    }
+  }
+}

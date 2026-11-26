@@ -1,4 +1,4 @@
-const incidents = [
+const demoIncidents = [
   {
     id: "deploy-api",
     title: "Deploy API service",
@@ -11,19 +11,23 @@ const incidents = [
     commit: "a93c2f1",
     time: "Today, 14:32 UTC",
     duration: "4m 18s",
-    summary: "Task definition registration failed after an empty secret reference made it into the deployment config.",
+    runMetrics: {
+      unit: "steps",
+      states: { completed: 3, failed: 1, skipped: 2, notStarted: 3 },
+    },
+    summary: "Task definition registration failed: the secret reference is empty.",
     safeToRerun: false,
     recovery: {
-      title: "Do not rerun yet",
-      summary: "The deployment stopped after making partial changes. Confirm the current service state before retrying.",
-      checkLabel: "BLOCKING CONDITION",
+      title: "Verify the current revision",
+      summary: "Compare the live task definition with the last successful deployment.",
+      checkLabel: "Current state",
       check: "service state is unknown",
       actions: [
-        "Verify the live service and task definition revision.",
-        "Populate the missing secret reference in the release config.",
+        "Inspect the service and task definition revision.",
+        "Add the missing secret reference to the release config.",
       ],
-      finalLabel: "AUTOMATED ACTIONS",
-      final: "None. This analysis is read-only.",
+      finalLabel: "Automated changes",
+      final: "None.",
     },
     events: [
       {
@@ -61,7 +65,7 @@ const incidents = [
         time: "14:32:43",
         evidenceTitle: "Run ended after earlier steps completed",
         evidenceDescription: "The runner records successful changes before the failed step. The current live state was not re-read.",
-        evidence: "3 steps succeeded\n1 step failed\n2 steps skipped\nLive state: not verified",
+        evidence: "3 completed\n1 failed\n2 skipped\n3 not started\nLive state: unverified",
         source: "run #1842 · job summary",
         sourceLocation: "final job summary",
       },
@@ -92,19 +96,23 @@ const incidents = [
     commit: "6bf28aa",
     time: "Today, 11:08 UTC",
     duration: "2m 51s",
+    runMetrics: {
+      unit: "steps",
+      states: { completed: 2, interrupted: 1, notStarted: 2 },
+    },
     summary: "An interrupted infrastructure apply left the final resource state unconfirmed.",
     safeToRerun: false,
     recovery: {
       title: "Inspect before retrying",
       summary: "The runner lost its connection during apply. Reconcile actual resources with the saved plan first.",
-      checkLabel: "BLOCKING CONDITION",
+      checkLabel: "Current state",
       check: "apply outcome not confirmed",
       actions: [
         "Refresh the remote state and inspect the affected resource.",
         "Generate a new plan before starting another apply.",
       ],
-      finalLabel: "AUTOMATED ACTIONS",
-      final: "None. This analysis is read-only.",
+      finalLabel: "Automated changes",
+      final: "None.",
     },
     events: [
       {
@@ -173,18 +181,22 @@ const incidents = [
     commit: "e174dd9",
     time: "Yesterday, 17:46 UTC",
     duration: "8m 03s",
+    runMetrics: {
+      unit: "tests",
+      states: { passed: 24, failed: 1, skipped: 8 },
+    },
     summary: "A flaky integration test timed out; a later run passed without code changes.",
     safeToRerun: true,
     recovery: {
       title: "Rerun appears safe",
       summary: "The later run passed and no deployment or infrastructure changes were made by the failed run.",
-      checkLabel: "VERIFIED CONDITION",
+      checkLabel: "Verified condition",
       check: "no partial changes detected",
       actions: [
         "The same commit passed on run #1820.",
         "No environment mutations were recorded.",
       ],
-      finalLabel: "RECOMMENDATION",
+      finalLabel: "Recommendation",
       final: "Use the successful run as the validation result.",
     },
     events: [
@@ -244,11 +256,25 @@ const incidents = [
   },
 ];
 
+let incidents = demoIncidents;
+
+if (typeof module === "object" && module.exports) {
+  module.exports = { demoIncidents };
+}
+
+if (typeof document !== "undefined") {
 const incidentList = document.querySelector("#incident-list");
 const incidentCount = document.querySelector("#incident-count");
+const incidentSelect = document.querySelector("#incident-select");
+const datasetSummary = document.querySelector("#dataset-summary");
+const mainContent = document.querySelector(".main-content");
+const appState = document.querySelector("#app-state");
+const appStateMessage = document.querySelector("#app-state-message");
+const retryLoadButton = document.querySelector("#retry-load-button");
+const emptySettingsButton = document.querySelector("#empty-settings-button");
 const incidentTitle = document.querySelector("#incident-title");
 const incidentSubtitle = document.querySelector("#incident-subtitle");
-const breadcrumbCurrent = document.querySelector("#breadcrumb-current");
+const incidentContext = document.querySelector("#incident-context");
 const metadataRow = document.querySelector("#metadata-row");
 const runBanner = document.querySelector("#run-banner");
 const trace = document.querySelector("#trace");
@@ -260,11 +286,87 @@ const toast = document.querySelector("#toast");
 const compareButton = document.querySelector("#compare-button");
 const shareButton = document.querySelector("#share-button");
 const resetSelection = document.querySelector("#reset-selection");
+const workspaceName = document.querySelector("#workspace-name");
+const environmentLabel = document.querySelector("#environment-label");
+const settingsButton = document.querySelector("#settings-button");
+const settingsDialog = document.querySelector("#settings-dialog");
+const settingsForm = document.querySelector("#settings-form");
+const providerSelect = document.querySelector("#provider-select");
+const providerLabel = document.querySelector("#provider-label");
+const providerDescription = document.querySelector("#provider-description");
+const workspaceNameInput = document.querySelector("#workspace-name-input");
+const environmentNameInput = document.querySelector("#environment-name-input");
+const settingsError = document.querySelector("#settings-error");
+const recoverySection = document.querySelector("#recovery");
+const reviewRecoveryButton = document.querySelector("#review-recovery");
+const vscodeApi = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
+
+const adapterRegistry = OpsAutopsyIntegrationSettings.createAdapterRegistry();
+adapterRegistry.register({
+  id: "demo",
+  label: "Demo data",
+  shortLabel: "Demo",
+  description: "Fictional local incidents. No provider requests or credentials are used.",
+  loadIncidents: async () => demoIncidents,
+});
 
 let selectedIncident = incidents[0];
 let selectedEventIndex = 0;
 let compareMode = false;
+let integrationSettings = { ...OpsAutopsyIntegrationSettings.DEFAULT_SETTINGS };
+let settingsLoadWarning = "";
 let toastTimeout;
+let nextExtensionRequestId = 0;
+const pendingExtensionRequests = new Map();
+
+if (vscodeApi) {
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+    if (!message || typeof message.requestId !== "string") return;
+    const pending = pendingExtensionRequests.get(message.requestId);
+    if (!pending) return;
+    if (message.type !== "settings:error"
+      && message.type !== "settings:loaded"
+      && message.type !== "settings:saved") {
+      return;
+    }
+
+    pendingExtensionRequests.delete(message.requestId);
+    window.clearTimeout(pending.timeoutId);
+    if (message.type === "settings:error") {
+      pending.reject(new Error(message.error || "VS Code preferences could not be saved."));
+    } else if (message.type === "settings:loaded" || message.type === "settings:saved") {
+      pending.resolve(message);
+    }
+  });
+}
+
+function requestExtension(type, payload = {}) {
+  if (!vscodeApi) {
+    return Promise.reject(new Error("VS Code settings are unavailable."));
+  }
+
+  const requestId = `ops-autopsy-${++nextExtensionRequestId}`;
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      pendingExtensionRequests.delete(requestId);
+      reject(new Error("VS Code did not respond to the settings request."));
+    }, 5000);
+    pendingExtensionRequests.set(requestId, { resolve, reject, timeoutId });
+
+    try {
+      if (!vscodeApi.postMessage({ type, requestId, ...payload })) {
+        window.clearTimeout(timeoutId);
+        pendingExtensionRequests.delete(requestId);
+        reject(new Error("The settings request could not be sent to VS Code."));
+      }
+    } catch (error) {
+      window.clearTimeout(timeoutId);
+      pendingExtensionRequests.delete(requestId);
+      reject(error);
+    }
+  });
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -276,10 +378,106 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function renderProviderOptions() {
+  providerSelect.innerHTML = adapterRegistry.list().map((adapter) => `
+    <option value="${escapeHtml(adapter.id)}">${escapeHtml(adapter.label)}</option>
+  `).join("");
+  providerSelect.value = integrationSettings.providerId;
+  renderProviderSummary();
+}
+
+function renderProviderSummary() {
+  const adapter = adapterRegistry.get(providerSelect.value);
+  if (!adapter) {
+    providerLabel.textContent = "Unavailable source";
+    providerDescription.textContent = "This provider is not registered in the current extension.";
+    return;
+  }
+  providerLabel.textContent = adapter.label;
+  providerDescription.textContent = adapter.description;
+}
+
+function renderIntegrationSettings() {
+  const adapter = adapterRegistry.get(integrationSettings.providerId);
+  workspaceName.textContent = integrationSettings.workspaceName;
+  environmentLabel.textContent = `${adapter.shortLabel} · ${integrationSettings.environmentName}`;
+  providerSelect.value = integrationSettings.providerId;
+  workspaceNameInput.value = integrationSettings.workspaceName;
+  environmentNameInput.value = integrationSettings.environmentName;
+  renderProviderSummary();
+}
+
+function getIncidentsForSettings(settings) {
+  const adapter = adapterRegistry.get(settings.providerId);
+  if (!adapter) throw new Error("The selected data source is unavailable.");
+  return adapter.loadIncidents(settings);
+}
+
+function selectIncidentFromUrl() {
+  const incident = incidents.find((item) => item.id === window.location.hash.slice(1));
+  selectedIncident = incident || incidents[0];
+}
+
+function setAppState(state, message = "") {
+  mainContent.dataset.appState = state;
+  mainContent.setAttribute("aria-busy", String(state === "loading"));
+  appState.dataset.state = state;
+  appState.setAttribute("role", state === "error" ? "alert" : "status");
+  appStateMessage.textContent = message;
+  appState.hidden = state === "ready";
+  retryLoadButton.hidden = state !== "error";
+  emptySettingsButton.hidden = state !== "empty";
+}
+
+async function initializeIntegrationSettings() {
+  setAppState("loading", "Loading incident data");
+  renderProviderOptions();
+  try {
+    if (vscodeApi) {
+      const response = await requestExtension("settings:get");
+      integrationSettings = OpsAutopsyIntegrationSettings.normalizeSettings(
+        response.settings,
+        adapterRegistry,
+      );
+      settingsLoadWarning = response.warning || "";
+    } else {
+      integrationSettings = OpsAutopsyIntegrationSettings.loadSettings(
+        window.localStorage,
+        adapterRegistry,
+      );
+    }
+  } catch (error) {
+    incidents = [];
+    selectedIncident = undefined;
+    renderApp();
+    setAppState("error", `Preferences could not be loaded: ${error.message}`);
+    return;
+  }
+
+  try {
+    incidents = await getIncidentsForSettings(integrationSettings);
+    if (!Array.isArray(incidents)) {
+      throw new TypeError("The selected source returned an invalid incident list.");
+    }
+  } catch (error) {
+    incidents = [];
+    selectedIncident = undefined;
+    renderApp();
+    setAppState("error", `Incident data could not be loaded: ${error.message}`);
+    return;
+  }
+
+  selectIncidentFromUrl();
+  setCompareMode(false);
+  renderApp();
+  renderIntegrationSettings();
+  if (settingsLoadWarning) showToast(settingsLoadWarning);
+}
+
 function renderIncidentList() {
   incidentCount.textContent = incidents.length;
   incidentList.innerHTML = incidents.map((incident) => `
-    <button class="incident-link ${incident.id === selectedIncident.id ? "selected" : ""}" type="button" data-incident="${incident.id}" aria-current="${incident.id === selectedIncident.id ? "true" : "false"}">
+    <button class="incident-link ${incident.id === selectedIncident?.id ? "selected" : ""}" type="button" data-incident="${escapeHtml(incident.id)}" aria-current="${incident.id === selectedIncident?.id ? "true" : "false"}">
       <span class="incident-link-dot ${incident.status}" aria-hidden="true"></span>
       <span class="incident-link-copy">
         <strong>${escapeHtml(incident.title)}</strong>
@@ -287,20 +485,33 @@ function renderIncidentList() {
       </span>
     </button>
   `).join("");
+  incidentSelect.innerHTML = incidents.map((incident) => `
+    <option value="${escapeHtml(incident.id)}">${escapeHtml(`${incident.title} · ${incident.run} · ${incident.statusLabel}`)}</option>
+  `).join("");
+  incidentSelect.value = selectedIncident?.id || "";
+
+  datasetSummary.textContent = `${incidents.length} sample runs available`;
+}
+
+function renderRunMetrics() {
+  const states = Object.entries(selectedIncident.runMetrics.states);
+  const total = states.reduce((sum, [, count]) => sum + count, 0);
+  const parts = states
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => `${count} ${label.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)}`)
+    .join(" · ");
+  return `${total} ${selectedIncident.runMetrics.unit} · ${parts}`;
 }
 
 function renderHeader() {
   incidentTitle.textContent = selectedIncident.title;
-  breadcrumbCurrent.textContent = selectedIncident.title;
+  incidentContext.textContent = `${selectedIncident.branch} · ${selectedIncident.time} · ${selectedIncident.duration}`;
   incidentSubtitle.textContent = selectedIncident.summary;
 
   metadataRow.innerHTML = `
-    <span class="meta-chip status-${selectedIncident.status}"><span class="meta-icon">${selectedIncident.status === "resolved" ? "✓" : selectedIncident.status === "warning" ? "!" : "×"}</span>${escapeHtml(selectedIncident.statusLabel)}</span>
-    <span class="meta-chip"><span class="meta-icon">◈</span>${escapeHtml(selectedIncident.service)}</span>
+    <span class="meta-chip status-${selectedIncident.status}">${escapeHtml(selectedIncident.statusLabel)}</span>
     <span class="meta-chip">${escapeHtml(selectedIncident.run)}</span>
-    <span class="meta-chip"><span class="meta-icon">⑂</span>${escapeHtml(selectedIncident.branch)}</span>
-    <span class="meta-chip"><span class="meta-icon">◷</span>${escapeHtml(selectedIncident.time)}</span>
-    <span class="meta-chip">${escapeHtml(selectedIncident.duration)}</span>
+    <span class="meta-chip">${escapeHtml(selectedIncident.service)}</span>
   `;
 
   renderRunBanner();
@@ -311,10 +522,10 @@ function renderRunBanner() {
     runBanner.className = "run-banner safe";
     runBanner.innerHTML = `
       <div class="run-banner-copy">
-        <span class="run-icon" aria-hidden="true">✓</span>
         <div>
-          <strong>Rerun appears safe</strong>
-          <p>Evidence shows no environment mutations, and run <code>#1820</code> passed on the same commit.</p>
+          <strong>Retry is available</strong>
+          <p>No environment changes; run #1820 passed on this commit.</p>
+          <span class="run-metrics">${escapeHtml(renderRunMetrics())}</span>
         </div>
       </div>
       <span class="banner-label">RECOVERED</span>
@@ -323,18 +534,18 @@ function renderRunBanner() {
   }
 
   const reason = selectedIncident.status === "critical"
-    ? "Partial changes may remain active. Reconcile live state before retrying."
-    : "The result of the apply is unknown. Refresh state before retrying.";
+    ? "A failed deploy may leave partial changes. Check the live service state."
+    : "The run stopped before its outcome was confirmed. Check service state.";
   runBanner.className = "run-banner";
   runBanner.innerHTML = `
     <div class="run-banner-copy">
-      <span class="run-icon" aria-hidden="true">!</span>
       <div>
-        <strong>Rerun not recommended yet</strong>
-        <p>${escapeHtml(reason)} See the recovery check below.</p>
+        <strong>Do not retry yet</strong>
+        <p>${escapeHtml(reason)}</p>
+        <span class="run-metrics">${escapeHtml(renderRunMetrics())}</span>
       </div>
     </div>
-    <span class="banner-label">STATE UNVERIFIED</span>
+    <span class="banner-label">${selectedIncident.status === "critical" ? "Live state unknown" : "Outcome unknown"}</span>
   `;
 }
 
@@ -359,37 +570,32 @@ function renderTrace() {
   if (selectedEventIndex >= visibleEvents.length) selectedEventIndex = 0;
 
   trace.innerHTML = visibleEvents.map((event, index) => {
-    const connector = index < visibleEvents.length - 1
-      ? `<span class="trace-connector ${event.type === "failed" ? "dashed" : ""}" aria-hidden="true"></span>`
-      : "";
     return `
       <div class="trace-step">
         <button class="event-card type-${event.type} ${index === selectedEventIndex ? "selected" : ""}" type="button" data-event-index="${index}" aria-pressed="${index === selectedEventIndex}" aria-label="${escapeHtml(`${event.typeLabel}: ${event.title}. ${event.description} ${event.time}`)}">
-          <span class="event-meta">
-            <span class="event-type">${escapeHtml(event.typeLabel)}</span>
-            <span class="event-status" aria-hidden="true">${escapeHtml(event.symbol)}</span>
-          </span>
-          <strong>${escapeHtml(event.title)}</strong>
           <span class="event-time">${escapeHtml(event.time)}</span>
+          <span class="event-marker" aria-hidden="true"></span>
+          <span class="event-copy">
+            <span class="event-type">${escapeHtml(event.typeLabel)}</span>
+            <strong>${escapeHtml(event.title)}</strong>
+          </span>
         </button>
-        ${connector}
       </div>
     `;
   }).join("");
 
-  traceSummary.textContent = `${visibleEvents.length} events · ${selectedIncident.repository} · ${selectedIncident.commit}`;
+  traceSummary.textContent = `${selectedIncident.repository} · ${selectedIncident.commit}`;
   renderEvidence(visibleEvents[selectedEventIndex], selectedEventIndex, visibleEvents.length);
 }
 
 function renderEvidence(event, index, total) {
-  evidenceIndex.textContent = `${String(index + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}`;
+  evidenceIndex.textContent = `Event ${index + 1} of ${total}`;
   evidenceContent.innerHTML = `
     <h3 class="evidence-event-title">${escapeHtml(event.evidenceTitle)}</h3>
     <p class="evidence-event-description">${escapeHtml(event.evidenceDescription)}</p>
-    <div class="evidence-label">SOURCE EVIDENCE</div>
+    <div class="evidence-label">Source evidence</div>
     <div class="evidence-code"><pre>${escapeHtml(event.evidence)}</pre></div>
     <div class="evidence-source">
-      <span class="source-icon" aria-hidden="true">⌘</span>
       <span class="source-copy">
         <strong>${escapeHtml(event.source)}</strong>
         <small>${escapeHtml(event.sourceLocation)}</small>
@@ -403,7 +609,6 @@ function renderRecovery() {
   recoveryCard.className = `recovery-card ${selectedIncident.safeToRerun ? "safe" : ""}`;
   recoveryCard.innerHTML = `
     <div class="recovery-status">
-      <span class="recovery-status-icon" aria-hidden="true">${selectedIncident.safeToRerun ? "✓" : "!"}</span>
       <div>
         <strong>${escapeHtml(recovery.title)}</strong>
         <p>${escapeHtml(recovery.summary)}</p>
@@ -423,9 +628,21 @@ function renderRecovery() {
 
 function renderApp() {
   renderIncidentList();
+  if (!selectedIncident) {
+    setAppState("empty", "No incident runs are available for this source.");
+    return;
+  }
   renderHeader();
   renderTrace();
   renderRecovery();
+  setAppState("ready");
+}
+
+function openSettings() {
+  settingsError.hidden = true;
+  settingsForm.querySelectorAll("[aria-invalid]").forEach((field) => field.removeAttribute("aria-invalid"));
+  renderIntegrationSettings();
+  settingsDialog.showModal();
 }
 
 function setCompareMode(enabled) {
@@ -448,6 +665,15 @@ incidentList.addEventListener("click", (event) => {
   if (!button) return;
 
   selectedIncident = incidents.find((incident) => incident.id === button.dataset.incident);
+  if (!selectedIncident) return;
+  selectedEventIndex = 0;
+  setCompareMode(false);
+  renderApp();
+});
+
+incidentSelect.addEventListener("change", () => {
+  selectedIncident = incidents.find((incident) => incident.id === incidentSelect.value);
+  if (!selectedIncident) return;
   selectedEventIndex = 0;
   setCompareMode(false);
   renderApp();
@@ -481,20 +707,90 @@ resetSelection.addEventListener("click", () => {
   renderTrace();
 });
 
-document.querySelector(".help-button").addEventListener("click", () => {
-  showToast("Ops Autopsy is a read-only demo. Every incident and log shown here is fictional.");
+document.querySelector("#about-button").addEventListener("click", () => {
+  showToast("Read-only incident analysis. All included incident data is fictional.");
+});
+
+settingsButton.addEventListener("click", openSettings);
+emptySettingsButton.addEventListener("click", openSettings);
+retryLoadButton.addEventListener("click", initializeIntegrationSettings);
+reviewRecoveryButton.addEventListener("click", () => {
+  recoverySection.scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    block: "start",
+  });
+});
+
+document.querySelector("#close-settings").addEventListener("click", () => settingsDialog.close());
+document.querySelector("#cancel-settings").addEventListener("click", () => settingsDialog.close());
+settingsDialog.addEventListener("click", (event) => {
+  if (event.target === settingsDialog) settingsDialog.close();
+});
+providerSelect.addEventListener("change", renderProviderSummary);
+settingsForm.addEventListener("input", () => {
+  settingsError.hidden = true;
+  settingsForm.querySelectorAll("[aria-invalid]").forEach((field) => field.removeAttribute("aria-invalid"));
+});
+
+settingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  settingsError.hidden = true;
+  const submitButton = settingsForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+
+  try {
+    const nextSettings = OpsAutopsyIntegrationSettings.normalizeSettings({
+      providerId: providerSelect.value,
+      workspaceName: workspaceNameInput.value,
+      environmentName: environmentNameInput.value,
+    }, adapterRegistry);
+    const nextIncidents = await getIncidentsForSettings(nextSettings);
+    if (!Array.isArray(nextIncidents) || nextIncidents.length === 0) {
+      throw new Error("The selected data source returned no incidents.");
+    }
+
+    if (vscodeApi) {
+      const response = await requestExtension("settings:save", { settings: nextSettings });
+      integrationSettings = OpsAutopsyIntegrationSettings.normalizeSettings(
+        response.settings,
+        adapterRegistry,
+      );
+    } else {
+      integrationSettings = OpsAutopsyIntegrationSettings.saveSettings(
+        window.localStorage,
+        adapterRegistry,
+        nextSettings,
+      );
+    }
+    incidents = nextIncidents;
+    selectIncidentFromUrl();
+    selectedEventIndex = 0;
+    setCompareMode(false);
+    renderApp();
+    renderIntegrationSettings();
+    settingsDialog.close();
+    showToast(vscodeApi
+      ? "Preferences saved in your VS Code user profile. Incident records are still fictional."
+      : "Preferences saved in this browser. Incident records are still fictional.");
+  } catch (error) {
+    settingsError.textContent = error.message || "Preferences could not be saved.";
+    settingsError.hidden = false;
+    if (/Workspace/.test(error.message)) workspaceNameInput.setAttribute("aria-invalid", "true");
+    if (/Environment/.test(error.message)) environmentNameInput.setAttribute("aria-invalid", "true");
+    if (/data source/.test(error.message)) providerSelect.setAttribute("aria-invalid", "true");
+  } finally {
+    submitButton.disabled = false;
+  }
 });
 
 window.addEventListener("hashchange", () => {
   const incident = incidents.find((item) => item.id === window.location.hash.slice(1));
-  if (!incident || incident.id === selectedIncident.id) return;
+  if (!incident || incident.id === selectedIncident?.id) return;
   selectedIncident = incident;
   selectedEventIndex = 0;
   setCompareMode(false);
   renderApp();
 });
 
-const initialIncident = incidents.find((incident) => incident.id === window.location.hash.slice(1));
-if (initialIncident) selectedIncident = initialIncident;
-setCompareMode(false);
-renderApp();
+initializeIntegrationSettings();
+}
