@@ -2,85 +2,101 @@
 
 # Ops Autopsy
 
-![Captura do protótipo Ops Autopsy a analisar uma execução de entrega falhada](share.png)
+![Vista desktop do Ops Autopsy com a sequência causal e a evidência de uma execução falhada](share.png)
 
-O Ops Autopsy é um protótipo estático para explorar a análise visual de incidentes de entrega de software: uma linha temporal causal, evidência associada a eventos e recomendações de recuperação só de leitura.
+O Ops Autopsy é uma extensão instalável para Visual Studio Code que apresenta uma análise visual e só de leitura de incidentes de entrega de software: linha temporal causal, evidência associada a eventos e orientações de recuperação.
 
-> **Estado do projeto:** demonstração de navegador com dados fictícios. Ainda não é um plugin instalável para uma IDE.
+> **Estado do projeto:** primeira extensão VS Code instalável, com cenários fictícios. Ainda não existem ligações a fornecedores nem análise de incidentes reais.
 
-## O que está implementado
+## Funcionalidades
 
-- Três cenários de demonstração fictícios: `deploy-api`, `infra-plan` e `test-timeout`.
-- Linha temporal interativa com seleção de eventos e respetiva evidência.
-- Comparação ilustrativa com uma execução anterior bem-sucedida; não consulta um sistema externo.
-- Recomendações de recuperação apresentadas como texto. A aplicação não executa comandos nem altera sistemas.
-- Ligação direta a um cenário através do fragmento do URL, por exemplo `index.html#deploy-api`.
-- Partilha do URL atual através da área de transferência, quando o navegador o permite.
+- Abre o analisador visual numa vista Webview do VS Code através da Paleta de Comandos.
+- Inclui três cenários fictícios: `deploy-api`, `infra-plan` e `test-timeout`.
+- Permite selecionar eventos na linha temporal, consultar evidência e comparar uma execução anterior ilustrativa.
+- Apresenta orientações de recuperação sem executar comandos ou alterar recursos.
+- Permite configurar a fonte e os nomes do workspace e do ambiente. A única fonte disponível é `demo`.
+- Mantém também uma versão autónoma para browser, sem necessidade de instalar a extensão.
 
-## Limites e estado do plugin
+Em ecrãs de PC, a navegação, a sequência causal e a evidência aparecem lado a lado. Em painéis estreitos, a interface muda para um seletor de execução e uma sequência vertical:
 
-A aplicação é composta por HTML, CSS e JavaScript executados no navegador. Os cenários estão definidos em `app.js`; não há backend, integração com IDE, manifesto de extensão, autenticação ou ligação a fontes reais de dados. Não existe integração operacional com Orca, Azure DevOps, Git ou fornecedores cloud. Os exemplos e as evidências são fictícios e não representam incidentes reais.
+![Painel compacto do Ops Autopsy num viewport de 380 por 640 píxeis](panel-compact.png)
 
-Para transformar este protótipo num plugin instalável, ainda é necessário decidir a IDE e as versões suportadas, a fonte de dados e a respetiva autorização, e implementar o manifesto e a integração específicos dessa plataforma. Não introduza credenciais ou dados operacionais nos exemplos.
+## Instalar no VS Code
 
-## Executar localmente
+É necessário o Visual Studio Code 1.85 ou posterior. Para construir o instalador localmente, é necessário Node.js 22 ou posterior e npm:
 
-É necessário um navegador moderno com JavaScript ativo. Não é necessário instalar dependências, usar um gestor de pacotes ou compilar o projeto.
-
-1. Obtenha uma cópia do repositório:
+1. Instale as dependências de desenvolvimento e valide o projeto:
 
    ```sh
-   git clone https://github.com/ineslino/ops-autopsy.git
-   cd ops-autopsy
+   npm ci
+   npm test
+   npm run check
    ```
 
-2. Abra `index.html` num navegador. Não é necessário iniciar um servidor.
+2. Crie o pacote VSIX:
 
-As fontes Outfit e DM Mono são carregadas do Google Fonts; sem ligação à Internet, o navegador usa as fontes alternativas definidas no CSS. A partilha pela área de transferência depende das permissões e do suporte do navegador.
+   ```sh
+   npm run package
+   ```
 
-## Exemplo de utilização
+   O ficheiro gerado chama-se `ops-autopsy-0.1.0.vsix`.
 
-Os seguintes fragmentos abrem os cenários correspondentes depois de abrir `index.html`:
+3. Instale-o pela linha de comandos:
 
-| Fragmento | Cenário de demonstração |
+   ```sh
+   code --install-extension ./ops-autopsy-0.1.0.vsix
+   ```
+
+   Em alternativa, no VS Code abra **Extensions**, escolha **…** e selecione **Install from VSIX…**.
+
+4. Abra a Paleta de Comandos e execute **Ops Autopsy: Open Incident Analyzer**.
+
+As definições do diálogo são guardadas no perfil de utilizador do VS Code em `opsAutopsy.preferences`. Só incluem `providerId`, `workspaceName` e `environmentName`; não aceitam nem guardam credenciais.
+
+## Executar no browser
+
+É necessário um browser moderno com JavaScript ativo. A partir da pasta do projeto, inicie um servidor estático:
+
+```sh
+python3 -m http.server 8000
+```
+
+Abra `http://localhost:8000`. A versão autónoma guarda os nomes não sensíveis no `localStorage` do browser. As fontes Outfit e DM Mono são carregadas do Google Fonts; sem ligação à Internet, são usadas as fontes alternativas definidas no CSS.
+
+## Cenários e utilização
+
+Abra `index.html` com um destes fragmentos para selecionar um cenário:
+
+| Fragmento | Cenário |
 | --- | --- |
 | `#deploy-api` | Falha de entrega associada a uma referência de segredo vazia. |
 | `#infra-plan` | Aplicação de infraestrutura interrompida, com resultado incerto. |
 | `#test-timeout` | Teste com timeout e evento de seguimento bem-sucedido. |
 
-Para explorar um cenário, selecione eventos na linha temporal e consulte a evidência apresentada. Use a comparação de execuções para ver o evento anterior fictício; não é uma consulta ao histórico real. As recomendações são informativas e não devem ser executadas automaticamente.
+Selecione eventos para consultar a evidência; use a comparação para ver um evento anterior fictício. As recomendações são informativas e não devem ser executadas automaticamente. Os cenários não representam incidentes reais nem consultam o histórico de uma plataforma.
 
-## Configuração e estrutura
+## Integrações e limites
 
-Não há configuração por variáveis de ambiente nem credenciais. Os dados de demonstração são a lista `incidents` em `app.js`; altere-a apenas com informação fictícia.
+A extensão empacota a aplicação existente numa Webview do VS Code. O adaptador `demo` é a única fonte registada e fornece dados fictícios locais. Não há backend, autenticação, pedidos a APIs de incidentes nem conectores de dados a Azure DevOps, GitHub, cloud ou CI/CD; a integração atual com o VS Code limita-se à interface e às definições do utilizador. A interface e a extensão não executam, repetem, cancelam ou alteram execuções ou recursos.
+
+O registo de adaptadores fornece uma base para futuras fontes escolhidas pelo utilizador, mas não representa uma integração já operacional. Uma integração real deverá usar armazenamento seguro da IDE para segredos e solicitar apenas permissões de leitura. Consulte [a arquitetura de integrações](docs/integrations.md).
+
+## Estrutura e validação
 
 | Ficheiro | Conteúdo |
 | --- | --- |
-| `index.html` | Estrutura da aplicação e referências aos recursos. |
-| `styles.css` | Apresentação e comportamento responsivo. |
-| `app.js` | Cenários, linha temporal, evidências e interações. |
-| `favicon.svg` | Ícone do protótipo. |
-| `share.png` | Captura usada nesta documentação e na pré-visualização social. |
+| `package.json` | Manifesto da extensão, comando, preferências do utilizador e scripts de validação/empacotamento. |
+| `extension.js` | Ativação, Webview e ligação às definições do VS Code. |
+| `index.html`, `styles.css`, `app.js` | Interface, apresentação e cenários fictícios. |
+| `integration-settings.js` | Registo de adaptadores e validação de preferências não sensíveis. |
+| `tests/` | Testes unitários da configuração e da política da Webview. |
+| `docs/integrations.md` | Estado, fronteiras de segurança e contrato para fontes futuras. |
+| `share.png`, `panel-compact.png`, `favicon.svg` | Capturas desktop e compacta, e ícone da interface. |
 
-## Verificação
+`npm run package` executa `npm run check` e `npm test` antes de criar o VSIX. Não existe pipeline de CI nem publicação configurada para o VS Code Marketplace. Para contribuir, preserve o comportamento só de leitura, distinga sempre dados fictícios de reais e execute os testes antes de abrir uma pull request para `main`.
 
-Não existe um conjunto de testes automatizados, processo de build ou pipeline de CI configurado. Para uma verificação local básica, com Node.js instalado:
+## Documentação e licença
 
-```sh
-node --check app.js
-git diff --check
-```
-
-Verifique também manualmente no navegador: abrir cada cenário acima, selecionar eventos, consultar evidências, ativar e desativar a comparação, e testar a apresentação em ecrãs estreitos e largos.
-
-## Contribuir
-
-As alterações devem preservar o caráter autónomo e só de leitura da demonstração e distinguir claramente dados fictícios de integrações reais. Antes de propor uma integração, identifique a IDE, a versão e a fonte de dados pretendidas. Execute as verificações acima e valide manualmente a interface antes de submeter uma pull request para `main`. O repositório não define um processo de lançamento ou verificações automáticas.
-
-## Documentação
-
-- [Proposta de metadados do repositório](docs/repository-metadata.md) — valores actuais confirmados e tópicos sugeridos, ainda não aplicados.
-
-## Licença
-
-Este projeto está licenciado ao abrigo da licença MIT. Consulte o ficheiro [LICENSE](LICENSE) para ver os termos.
+- [Arquitetura de integrações](docs/integrations.md) — estado atual, configuração do utilizador, segurança e contrato para adaptadores.
+- [Proposta de metadados do repositório](docs/repository-metadata.md) — tópicos sugeridos, não aplicados.
+- [Licença MIT](LICENSE).

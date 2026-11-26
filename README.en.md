@@ -2,85 +2,101 @@
 
 # Ops Autopsy
 
-![Screenshot of the Ops Autopsy prototype analysing a failed delivery run](share.png)
+![Desktop Ops Autopsy view with the causal sequence and evidence for a failed run](share.png)
 
-Ops Autopsy is a static prototype for exploring visual software-delivery incident analysis: a causal timeline, evidence attached to events, and read-only recovery guidance.
+Ops Autopsy is an installable Visual Studio Code extension that presents read-only visual analysis of software-delivery incidents: a causal timeline, event-linked evidence, and recovery guidance.
 
-> **Project status:** browser demonstration with fictional data. It is not yet an installable IDE plugin.
+> **Project status:** first installable VS Code extension, with fictional scenarios. Provider connections and real incident analysis are not implemented.
 
-## What is implemented
+## Features
 
-- Three fictional demo scenarios: `deploy-api`, `infra-plan`, and `test-timeout`.
-- An interactive timeline with event selection and related evidence.
-- An illustrative comparison with a previous successful run; it does not query an external system.
-- Recovery guidance displayed as text. The application does not run commands or modify systems.
-- Direct links to a scenario through the URL fragment, for example `index.html#deploy-api`.
-- Sharing the current URL through the clipboard when the browser allows it.
+- Opens the visual analyzer in a VS Code Webview from the Command Palette.
+- Includes three fictional scenarios: `deploy-api`, `infra-plan`, and `test-timeout`.
+- Lets users select timeline events, inspect evidence, and compare an illustrative previous run.
+- Presents recovery guidance without running commands or changing resources.
+- Lets users configure the source and workspace/environment labels. Only `demo` is currently available.
+- Also retains a standalone browser version that does not require installing the extension.
 
-## Limitations and plugin status
+On PC screens, navigation, the causal sequence, and evidence appear side by side. Narrow panels switch to a run selector and a vertical sequence:
 
-The application consists of HTML, CSS, and JavaScript running in a browser. Scenarios are defined in `app.js`; there is no backend, IDE integration, extension manifest, authentication, or connection to real data sources. There is no operational integration with Orca, Azure DevOps, Git, or cloud providers. Examples and evidence are fictional and do not represent real incidents.
+![Compact Ops Autopsy panel in a 380-by-640-pixel viewport](panel-compact.png)
 
-Turning this prototype into an installable plugin requires choosing the IDE and supported versions, the data source and its authorization model, and implementing the platform-specific manifest and integration. Do not put credentials or operational data into the examples.
+## Install in VS Code
 
-## Run locally
+Visual Studio Code 1.85 or later is required. Building the local installer requires Node.js 22 or later and npm:
 
-A modern browser with JavaScript enabled is required. There is no need to install dependencies, use a package manager, or build the project.
-
-1. Get a copy of the repository:
+1. Install development dependencies and validate the project:
 
    ```sh
-   git clone https://github.com/ineslino/ops-autopsy.git
-   cd ops-autopsy
+   npm ci
+   npm test
+   npm run check
    ```
 
-2. Open `index.html` in a browser. No server is required.
+2. Build the VSIX package:
 
-The Outfit and DM Mono fonts load from Google Fonts; without an internet connection, the browser uses the fallback fonts defined in CSS. Clipboard sharing depends on browser support and permissions.
+   ```sh
+   npm run package
+   ```
 
-## Usage example
+   The generated file is named `ops-autopsy-0.1.0.vsix`.
 
-The following fragments open the corresponding scenarios after opening `index.html`:
+3. Install it from the command line:
 
-| Fragment | Demo scenario |
+   ```sh
+   code --install-extension ./ops-autopsy-0.1.0.vsix
+   ```
+
+   Alternatively, open **Extensions** in VS Code, choose **…**, and select **Install from VSIX…**.
+
+4. Open the Command Palette and run **Ops Autopsy: Open Incident Analyzer**.
+
+The settings dialog saves preferences in the VS Code user profile under `opsAutopsy.preferences`. It only contains `providerId`, `workspaceName`, and `environmentName`; it does not accept or store credentials.
+
+## Run in a browser
+
+A modern browser with JavaScript enabled is required. From the project directory, start a static server:
+
+```sh
+python3 -m http.server 8000
+```
+
+Open `http://localhost:8000`. The standalone version stores non-secret labels in browser `localStorage`. Outfit and DM Mono fonts load from Google Fonts; the CSS fallbacks are used when offline.
+
+## Scenarios and usage
+
+Open `index.html` with one of these fragments to select a scenario:
+
+| Fragment | Scenario |
 | --- | --- |
 | `#deploy-api` | Delivery failure associated with an empty secret reference. |
 | `#infra-plan` | Interrupted infrastructure apply with an uncertain outcome. |
 | `#test-timeout` | A test timeout followed by a successful event. |
 
-Explore a scenario by selecting timeline events and inspecting the displayed evidence. Use run comparison to see a fictional previous event; it does not query real history. The recommendations are informational and should not be executed automatically.
+Select events to inspect evidence; use comparison to see a fictional previous event. Recommendations are informational and should not be executed automatically. Scenarios are not real incidents and do not query a platform's history.
 
-## Configuration and structure
+## Integrations and limitations
 
-There is no environment-variable configuration or credential setup. Demo data lives in the `incidents` list in `app.js`; only edit it with fictional information.
+The extension packages the existing application in a VS Code Webview. The `demo` adapter is the only registered source and provides local fictional data. There is no backend, authentication, incident API traffic, or data connector to Azure DevOps, GitHub, cloud platforms, or CI/CD; the current VS Code integration is limited to the UI and user settings. The UI and extension do not execute, retry, cancel, or change runs or resources.
+
+The adapter registry is a foundation for future user-selected sources, not an operational integration. A real integration must use the IDE's secure secret storage and request read-only permissions only. See the [integration architecture](docs/integrations.md).
+
+## Structure and validation
 
 | File | Contents |
 | --- | --- |
-| `index.html` | Application structure and resource references. |
-| `styles.css` | Presentation and responsive behaviour. |
-| `app.js` | Scenarios, timeline, evidence, and interactions. |
-| `favicon.svg` | Prototype icon. |
-| `share.png` | Screenshot used in this documentation and social preview. |
+| `package.json` | Extension manifest, command, user preferences, and validation/package scripts. |
+| `extension.js` | Activation, Webview, and VS Code settings bridge. |
+| `index.html`, `styles.css`, `app.js` | UI structure, presentation, and fictional scenarios. |
+| `integration-settings.js` | Adapter registry and non-secret preference validation. |
+| `tests/` | Unit tests for settings and the Webview policy. |
+| `docs/integrations.md` | Current status, security boundaries, and future adapter contract. |
+| `share.png`, `panel-compact.png`, `favicon.svg` | Desktop and compact screenshots, plus the interface icon. |
 
-## Validation
+`npm run package` runs `npm run check` and `npm test` before creating the VSIX. There is no CI pipeline or VS Code Marketplace publishing configured. Contributions should preserve read-only behaviour, clearly distinguish fictional data from real data, and run the tests before a pull request to `main`.
 
-There is no automated test suite, build process, or CI pipeline configured. For a basic local check, with Node.js installed:
+## Documentation and licence
 
-```sh
-node --check app.js
-git diff --check
-```
-
-Also manually check in a browser: open each scenario above, select events, inspect evidence, toggle run comparison, and verify the layout at narrow and wide viewport sizes.
-
-## Contributing
-
-Changes should preserve the demo's standalone, read-only nature and clearly distinguish fictional data from real integrations. Before proposing an integration, identify the intended IDE, version, and data source. Run the checks above and manually validate the interface before submitting a pull request to `main`. The repository does not define a release process or automated checks.
-
-## Documentation
-
-- [Repository metadata proposal](docs/repository-metadata.md) — confirmed current values and suggested topics, not yet applied.
-
-## Licence
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for the terms.
+- [Integration architecture](docs/integrations.md) — current status, user configuration, security, and future adapter contract.
+- [Repository metadata proposal](docs/repository-metadata.md) — suggested topics, not applied.
+- [MIT License](LICENSE).
